@@ -1,6 +1,6 @@
 from app.database.models import async_session
-from app.database.models import UserBase, WaterLog
-from sqlalchemy import select
+from app.database.models import UserBase, WaterLog, Recipe, RecipeLog
+from sqlalchemy import select, delete, func
 
 
 async def set_user(data):
@@ -61,3 +61,121 @@ async def update_user_goal(
         user.fats = fats
         user.carbons = carbons
         await session.commit()
+
+
+# ----- Recipes API -----
+
+
+async def seed_recipes_if_empty() -> None:
+    async with async_session() as session:
+        count = (await session.execute(select(Recipe))).scalars().first()
+        if count:
+            return
+        demo = [
+            Recipe(
+                title="Овсянка с ягодами",
+                category="breakfast",
+                calories=350,
+                proteins=15,
+                fats=8,
+                carbons=55,
+                weight_grams=300,
+                image_url="https://via.placeholder.com/640x360.png?text=Breakfast",
+                instructions="Сварите овсянку на воде/молоке, добавьте ягоды и орехи.",
+            ),
+            Recipe(
+                title="Куриная грудка с рисом",
+                category="lunch",
+                calories=480,
+                proteins=40,
+                fats=10,
+                carbons=60,
+                weight_grams=350,
+                image_url="https://via.placeholder.com/640x360.png?text=Lunch",
+                instructions="Отварите рис, обжарьте куриную грудку, подайте вместе.",
+            ),
+            Recipe(
+                title="Творог с мёдом",
+                category="snack",
+                calories=220,
+                proteins=20,
+                fats=5,
+                carbons=20,
+                weight_grams=200,
+                image_url="https://via.placeholder.com/640x360.png?text=Snack",
+                instructions="Смешайте творог с мёдом, можно добавить орехи.",
+            ),
+            Recipe(
+                title="Лосось с овощами",
+                category="dinner",
+                calories=500,
+                proteins=35,
+                fats=25,
+                carbons=25,
+                weight_grams=350,
+                image_url="https://via.placeholder.com/640x360.png?text=Dinner",
+                instructions="Запеките лосося и овощи в духовке 15–20 минут.",
+            ),
+        ]
+        session.add_all(demo)
+        await session.commit()
+
+
+async def get_recipes_by_category_and_limit(category: str, max_calories: int) -> list[Recipe]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Recipe).where(Recipe.category == category, Recipe.calories <= max_calories)
+        )
+        return list(result.scalars().all())
+
+
+async def add_recipe_selection(telegram_id: int, recipe_id: int) -> None:
+    async with async_session() as session:
+        session.add(RecipeLog(telegram_id=telegram_id, recipe_id=recipe_id))
+        await session.commit()
+
+
+async def list_selected_recipes(telegram_id: int) -> list[RecipeLog]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(RecipeLog).where(RecipeLog.telegram_id == telegram_id)
+        )
+        return list(result.scalars().all())
+
+
+async def delete_selected_recipe(entry_id: int, telegram_id: int) -> None:
+    async with async_session() as session:
+        await session.execute(
+            delete(RecipeLog).where(RecipeLog.id == entry_id, RecipeLog.telegram_id == telegram_id)
+        )
+        await session.commit()
+
+
+# ----- Aggregations for daily stats -----
+
+
+async def get_today_recipes_sum(telegram_id: int) -> dict:
+    async with async_session() as session:
+        # Sum by joining logs with recipes
+        result = await session.execute(
+            select(
+                func.coalesce(func.sum(Recipe.calories), 0),
+                func.coalesce(func.sum(Recipe.proteins), 0),
+                func.coalesce(func.sum(Recipe.fats), 0),
+                func.coalesce(func.sum(Recipe.carbons), 0),
+            )
+            .select_from(RecipeLog)
+            .join(Recipe, Recipe.id == RecipeLog.recipe_id)
+        )
+        cal, p, f, c = result.first()
+        return {"calories": int(cal), "proteins": int(p), "fats": int(f), "carbons": int(c)}
+
+
+async def get_today_water_sum(telegram_id: int) -> int:
+    async with async_session() as session:
+        result = await session.execute(
+            select(func.coalesce(func.sum(WaterLog.amount_ml), 0)).where(
+                WaterLog.telegram_id == telegram_id
+            )
+        )
+        return int(result.scalar() or 0)

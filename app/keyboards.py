@@ -81,3 +81,13 @@ change_goal_button_kb = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="Сменить цель", callback_data="change_goal:open")],
     ]
 )
+
+
+recipes_categories_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Завтрак", callback_data="recipes:breakfast")],
+        [InlineKeyboardButton(text="Обед", callback_data="recipes:lunch")],
+        [InlineKeyboardButton(text="Полдник", callback_data="recipes:snack")],
+        [InlineKeyboardButton(text="Ужин", callback_data="recipes:dinner")],
+    ]
+)

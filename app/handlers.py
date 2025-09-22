@@ -6,6 +6,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 router = Router()
@@ -44,8 +45,9 @@ async def start_command(message: Message, state: FSMContext):
 
 @router.message(Command("recipes"))
 async def handleRecipes(message: Message):
+    await rq.seed_recipes_if_empty()
     await message.answer(
-        "Выберите рецепт 😜\nСкоро тут появятся подборки рецептов по вашим целям."
+        "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
     )
 
 
@@ -58,9 +60,15 @@ async def handleAddMeal(message: Message):
 
 @router.message(Command("delete_meals"))
 async def handleDeleteMeals(message: Message):
-    await message.answer(
-        "Удалить приём пищи 🗑\nУкажите, какой приём пищи удалить (например: \"завтрак\")."
-    )
+    entries = await rq.list_selected_recipes(message.from_user.id)
+    if not entries:
+        await message.answer("У вас нет добавленных рецептов")
+        return
+    builder = InlineKeyboardBuilder()
+    for e in entries:
+        builder.button(text=f"#{e.id}", callback_data=f"del_recipe:{e.id}")
+    builder.adjust(3)
+    await message.answer("Удалить приём пищи 🗑\nВыберите запись для удаления:", reply_markup=builder.as_markup())
 
 
 @router.message(Command("show_today_calories"))
@@ -71,14 +79,57 @@ async def handleShowTodayCalories(message: Message):
             "Я не нашёл ваших данных. Пройдите регистрацию командой /start."
         )
         return
+    meals_sum = await rq.get_today_recipes_sum(message.from_user.id)
+    water_sum = await rq.get_today_water_sum(message.from_user.id)
+    remaining_cal = max(user.calorie_intake - meals_sum["calories"], 0)
+    remaining_p = max(user.proteins - meals_sum["proteins"], 0)
+    remaining_f = max(user.fats - meals_sum["fats"], 0)
+    remaining_c = max(user.carbons - meals_sum["carbons"], 0)
+    remaining_water = max(user.water - water_sum, 0)
     text_lines = []
     text_lines.append("Моё КБЖУ ✅")
-    text_lines.append(f"🔥 Калории: {user.calorie_intake} ккал")
-    text_lines.append(f"🍗 Белки: {user.proteins} г")
-    text_lines.append(f"🥑 Жиры: {user.fats} г")
-    text_lines.append(f"🍚 Углеводы: {user.carbons} г")
-    text_lines.append(f"💧 Вода: {user.water} мл")
+    text_lines.append(f"🔥 Осталось калорий: {remaining_cal} ккал (из {user.calorie_intake})")
+    text_lines.append(f"🍗 Осталось белков: {remaining_p} г (из {user.proteins})")
+    text_lines.append(f"🥑 Осталось жиров: {remaining_f} г (из {user.fats})")
+    text_lines.append(f"🍚 Осталось углеводов: {remaining_c} г (из {user.carbons})")
+    text_lines.append(f"💧 Осталось воды: {remaining_water} мл (норма {user.water})")
     await message.answer("\n".join(text_lines))
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("recipes:"))
+async def recipes_by_category(query: CallbackQuery):
+    await query.answer()
+    _, category = query.data.split(":")
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.answer("Сначала пройдите регистрацию: /start")
+        return
+    max_cal = user.calorie_intake  # базовая норма на день (упрощённо)
+    recipes = await rq.get_recipes_by_category_and_limit(category, max_cal)
+    if not recipes:
+        await query.message.answer("Подходящих рецептов не найдено")
+        return
+    builder = InlineKeyboardBuilder()
+    for r in recipes:
+        builder.button(text=f"{r.title} ({r.calories} ккал)", callback_data=f"pick_recipe:{r.id}")
+    builder.adjust(1)
+    await query.message.answer("Выберите рецепт:", reply_markup=builder.as_markup())
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("pick_recipe:"))
+async def pick_recipe(query: CallbackQuery):
+    await query.answer()
+    _, recipe_id = query.data.split(":")
+    await rq.add_recipe_selection(query.from_user.id, int(recipe_id))
+    await query.message.answer("Вы успешно добавили рецепт!")
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("del_recipe:"))
+async def delete_recipe_entry(query: CallbackQuery):
+    await query.answer()
+    _, entry_id = query.data.split(":")
+    await rq.delete_selected_recipe(int(entry_id), query.from_user.id)
+    await query.message.answer("Рецепт удалён")
 
 
 @router.message(Command("recommend_food"))
