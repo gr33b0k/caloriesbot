@@ -28,6 +28,14 @@ class UserBase(Base):
     water: Mapped[int] = mapped_column(Integer)
 
 
+class WaterLog(Base):
+    __tablename__ = "water_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_id = mapped_column(BigInteger)
+    amount_ml: Mapped[int] = mapped_column(Integer)
+
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
