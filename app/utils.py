@@ -48,24 +48,28 @@ def calculate_calories(data: dict) -> dict:
 
 def build_registration_message(data):
     lines = []
-    lines.append("🎉 <b>Регистрация завершена!</b>\n")
-    lines.append(f"🕰 Возраст: {data['age']}")
-    lines.append(f"📏 Текущий рост: {data['height']}")
-    lines.append(f"💪 Текущий вес: {data['weight']}")
-    lines.append(f"🏃 Уровень активности: {_match_activity(data['activity'])}")
-    lines.append(f"🎯 Цель: {_match_goal(data['goal'])}")
-    lines.append(f"🔥 Норма калорий для вашей цели: {data['calorie_intake']} ккал")
-    lines.append(f"🍗 Белки: {data['proteins']} г")
-    lines.append(f"🥑 Жиры: {data['fats']} г")
-    lines.append(f"🍚 Углеводы: {data['carbons']} г")
-    lines.append(f"💧 Норма воды: {data['water']} мл\n")
+    lines.append("🎉 <b>Регистрация завершена!</b> 🎉\n")
+    lines.append(f"🕰 Возраст: <code>{data['age']}</code>")
+    lines.append(f"📏 Текущий рост: <code>{data['height']}</code>")
+    lines.append(f"💪 Текущий вес: <code>{data['weight']}</code>")
     lines.append(
-        "Важно: расчёты носят рекомендательный характер и не заменяют консультацию врача/диетолога."
+        f"🏃 Уровень активности: <code>{_match_activity(data['activity'])}</code>"
+    )
+    lines.append(f"🎯 Цель: <code>{_match_goal(data['goal'])}</code>")
+    lines.append(
+        f"🔥 Норма калорий для вашей цели: <code>{data['calorie_intake']} ккал</code>"
+    )
+    lines.append(f"🍗 Белки: <code>{data['proteins']} г</code>")
+    lines.append(f"🥑 Жиры: <code>{data['fats']} г</code>")
+    lines.append(f"🍚 Углеводы: <code>{data['carbons']} г</code>")
+    lines.append(f"💧 Норма воды: <code>{data['water']} мл</code>\n")
+    lines.append(
+        "Важно: <i>расчёты КБЖУ носят рекомендательный характер и не заменяют консультацию врача/диетолога.</i>"
     )
     return "\n".join(lines)
 
 
-def _match_activity(activity):
+def match_activity(activity):
     mapping = {
         "inactive": "сидячий образ жизни",
         "light": "легкая активность",
@@ -76,7 +80,7 @@ def _match_activity(activity):
     return mapping.get(activity, activity)
 
 
-def _match_goal(goal):
+def match_goal(goal):
     mapping = {
         "loss": "похудение",
         "maintain": "поддержание веса",
