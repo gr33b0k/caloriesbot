@@ -23,6 +23,7 @@ class UserBase(Base):
     height: Mapped[int] = mapped_column(Integer)
     weight: Mapped[int] = mapped_column(Integer)
     activity: Mapped[str] = mapped_column(String(30))
+    goal: Mapped[str] = mapped_column(String(30))
     calorie_intake: Mapped[int] = mapped_column(Integer)
     proteins: Mapped[int] = mapped_column(Integer)
     fats: Mapped[int] = mapped_column(Integer)
@@ -70,4 +71,6 @@ async def async_main():
         info = await conn.execute(text("PRAGMA table_info(water_logs)"))
         cols = [row[1] for row in info]
         if "created_at" not in cols:
-            await conn.execute(text("ALTER TABLE water_logs ADD COLUMN created_at DATETIME"))
+            await conn.execute(
+                text("ALTER TABLE water_logs ADD COLUMN created_at DATETIME")
+            )

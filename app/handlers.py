@@ -1,6 +1,10 @@
 import app.keyboards as kb
 import app.database.requests as rq
-from app.utils import calculate_calories, build_registration_message, match_activity
+from app.utils import (
+    calculate_calories,
+    build_registration_message,
+    match_goal,
+)
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
@@ -16,6 +20,7 @@ router = Router()
 
 
 class RegistrationStates(StatesGroup):
+    waiting_name = State()
     waiting_age = State()
     waiting_sex = State()
     waiting_height = State()
@@ -41,47 +46,31 @@ class WaterStates(StatesGroup):
 async def start_command(message: Message, state: FSMContext):
     await state.clear()
     await message.reply(
-        "Здравствуйте! Давайте подберём Вашу норму калорий и КБЖУ. Сначала введите Ваш возраст.",
+        "Давайте познакомимся! 🙂 Пожалуйста, напишите своё имя.",
     )
     await state.update_data(telegram_id=message.from_user.id)
-    await state.set_state(RegistrationStates.waiting_age)
+    await state.set_state(RegistrationStates.waiting_name)
 
 
-@router.message(Command("recommend_food"))
-async def handleRecommendFood(message: Message):
-    await message.answer(
-        "Посоветуй что поесть 🍽\nНапишите время приёма пищи (завтрак/обед/ужин) — я подскажу идеи."
-    )
+# @router.message(Command("recommend_food"))
+# async def handleRecommendFood(message: Message):
+#     await message.answer(
+#         "Посоветуй что поесть 🍽\nНапишите время приёма пищи (завтрак/обед/ужин) — я подскажу идеи."
+#     )
 
 
-@router.message(Command("plan"))
-async def handlePlan(message: Message):
-    await message.answer(
-        'Планирование питания 📅\nОпишите период (например: "на неделю") и предпочтения.'
-    )
+# @router.message(Command("plan"))
+# async def handlePlan(message: Message):
+#     await message.answer(
+#         'Планирование питания 📅\nОпишите период (например: "на неделю") и предпочтения.'
+#     )
 
 
-@router.message(Command("add_meal"))
-async def handleAddMeal(message: Message):
-    await message.answer(
-        'Добавить еду 🍽\nНапишите, что вы съели и сколько (например: "овсянка 60 г").'
-    )
-
-
-@router.message(Command("delete_meals"))
-async def handleDeleteMeals(message: Message):
-    entries = await rq.list_selected_recipes(message.from_user.id)
-    if not entries:
-        await message.answer("У вас нет добавленных рецептов")
-        return
-    builder = InlineKeyboardBuilder()
-    for e in entries:
-        builder.button(text=f"#{e.id}", callback_data=f"del_recipe:{e.id}")
-    builder.adjust(3)
-    await message.answer(
-        "Удалить приём пищи 🗑\nВыберите запись для удаления:",
-        reply_markup=builder.as_markup(),
-    )
+# @router.message(Command("add_meal"))
+# async def handleAddMeal(message: Message):
+#     await message.answer(
+#         'Добавить еду 🍽\nНапишите, что вы съели и сколько (например: "овсянка 60 г").'
+#     )
 
 
 @router.message(Command("show_today_calories"))
@@ -115,8 +104,8 @@ async def handleShowTodayCalories(message: Message):
 async def handleHelp(message: Message):
     await message.answer(
         "Помощь 🛠\nДоступные команды:\n"
-        "/recipes, /add_meal, /delete_meals, /show_today_calories, /recommend_food,\n"
-        "/plan, /track_water, /my_goal, /change_products, /help, /privacy"
+        "/recipes, /delete_meals, /show_today_calories,\n"
+        "/track_water, /my_goal, /help, /privacy"
     )
 
 
@@ -127,11 +116,11 @@ async def handlePrivacy(message: Message):
     )
 
 
-@router.message(Command("change_products"))
-async def handleChangeProducts(message: Message):
-    await message.answer(
-        'Замена продуктов 🔄\nНапишите продукт и альтернативу (например: "майонез → греческий йогурт").'
-    )
+# @router.message(Command("change_products"))
+# async def handleChangeProducts(message: Message):
+#     await message.answer(
+#         'Замена продуктов 🔄\nНапишите продукт и альтернативу (например: "майонез → греческий йогурт").'
+#     )
 
 
 # endregion
@@ -141,10 +130,22 @@ async def handleChangeProducts(message: Message):
 
 
 @router.message(Command("recipes"))
-async def handleRecipes(message: Message):
+async def handle_recipes(message: Message):
     await rq.seed_recipes_if_empty()
     await message.answer(
         "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
+    )
+
+
+@router.message(Command("delete_meals"))
+async def handle_delete_meals(message: Message):
+    entries = await rq.list_selected_recipes(message.from_user.id)
+    if not entries:
+        await message.answer("У вас нет добавленных рецептов")
+        return
+    await message.answer(
+        "Удалить приём пищи 🗑\nВыберите запись для удаления:",
+        reply_markup=kb.build_delete_recipe_keyboard(entries),
     )
 
 
@@ -161,21 +162,33 @@ async def recipes_by_category(query: CallbackQuery):
     if not recipes:
         await query.message.answer("Подходящих рецептов не найдено")
         return
-    builder = InlineKeyboardBuilder()
-    for r in recipes:
-        builder.button(
-            text=f"{r.title} ({r.calories} ккал)", callback_data=f"pick_recipe:{r.id}"
-        )
-    builder.adjust(1)
-    await query.message.answer("Выберите рецепт:", reply_markup=builder.as_markup())
+    await query.message.edit_text(
+        "😋 Выберите рецепт:", reply_markup=kb.build_recipes_keyboard(recipes)
+    )
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("pick_recipe:"))
+@router.callback_query(
+    lambda c: c.data
+    and c.data.startswith("pick_recipe:")
+    and not c.data.endswith("back")
+)
 async def pick_recipe(query: CallbackQuery):
     await query.answer()
     _, recipe_id = query.data.split(":")
     await rq.add_recipe_selection(query.from_user.id, int(recipe_id))
-    await query.message.answer("Вы успешно добавили рецепт!")
+    await query.message.edit_text(
+        "Вы успешно добавили рецепт!\n\nВыберите приём пищи:",
+        reply_markup=kb.recipes_categories_keyboard,
+    )
+
+
+@router.callback_query(
+    lambda c: c.data and c.data.startswith("pick_recipe:") and c.data.endswith("back")
+)
+async def back_to_categories(query: CallbackQuery):
+    await query.message.edit_text(
+        "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
+    )
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("del_recipe:"))
@@ -183,7 +196,11 @@ async def delete_recipe_entry(query: CallbackQuery):
     await query.answer()
     _, entry_id = query.data.split(":")
     await rq.delete_selected_recipe(int(entry_id), query.from_user.id)
-    await query.message.answer("Рецепт удалён")
+    entries = await rq.list_selected_recipes(query.from_user.id)
+    await query.message.edit_text(
+        "Удалить приём пищи 🗑\nВыберите запись для удаления:",
+        reply_markup=kb.build_delete_recipe_keyboard(entries),
+    )
 
 
 # endregion
@@ -246,12 +263,7 @@ async def handleMyGoal(message: Message):
         await message.answer("Сначала пройдите регистрацию: /start")
         return
     await message.answer(
-        "Моя цель 🎉\n"
-        f"Возраст: {user.age}\n"
-        f"Рост: {user.height}\n"
-        f"Вес: {user.weight}\n"
-        f"Активность: {match_activity(user.activity)}\n"
-        f"Целевая калорийность: {user.calorie_intake} ккал",
+        f"🎯 Ваша цель: {match_goal(user.goal)}\n",
         reply_markup=kb.change_goal_button_kb,
     )
 
@@ -259,7 +271,7 @@ async def handleMyGoal(message: Message):
 @router.callback_query(lambda c: c.data == "change_goal:open")
 async def open_change_goal(query: CallbackQuery):
     await query.answer()
-    await query.message.answer(
+    await query.message.edit_text(
         "Выберите новую цель:", reply_markup=kb.goal_change_keyboard
     )
 
@@ -291,7 +303,7 @@ async def change_goal_apply(query: CallbackQuery):
         fats=results["fats"],
         carbons=results["carbons"],
     )
-    await query.message.answer(
+    await query.message.edit_text(
         "Цель обновлена ✅\n"
         f"Новая целевая калорийность: {results['calorie_intake']} ккал\n"
         f"Белки: {results['proteins']} г, Жиры: {results['fats']} г, Углеводы: {results['carbons']} г"
@@ -304,9 +316,22 @@ async def change_goal_apply(query: CallbackQuery):
 # region Registration
 
 
+@router.message(RegistrationStates.waiting_name)
+async def name_callback(message: Message, state: FSMContext):
+    name_str = message.text.strip()
+    if not name_str.isalpha() or len(name_str) < 2 or len(name_str) > 30:
+        await message.answer(
+            "Пожалуйста, введите корректное имя (только буквы, 2-30 символов)"
+        )
+        return
+    await state.update_data(name=name_str)
+    await message.answer("Супер! 🎉 Теперь укажите Ваш возраст")
+    await state.set_state(RegistrationStates.waiting_age)
+
+
 @router.message(RegistrationStates.waiting_age)
 async def age_callback(message: Message, state: FSMContext):
-    age_str = message.text
+    age_str = message.text.strip()
     try:
         age_int = int(age_str)
     except ValueError:
@@ -316,16 +341,7 @@ async def age_callback(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, отправьте число в диапазоне 16-100")
         return
     await state.update_data(age=age_int)
-    await message.answer("Выберите Ваш пол.", reply_markup=kb.sex_keyboard)
-    await state.set_state(RegistrationStates.waiting_sex)
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith("sex:"))
-async def sex_callback(query: CallbackQuery, state: FSMContext):
-    await query.answer()
-    _, sex = query.data.split(":")
-    await state.update_data(sex=sex)
-    await query.message.answer("Введите Ваш рост в сантиметрах")
+    await message.answer("Отлично! 🙌 Введите ваш рост в сантиметрах")
     await state.set_state(RegistrationStates.waiting_height)
 
 
@@ -341,7 +357,7 @@ async def height_callback(message: Message, state: FSMContext):
         await message.answer("Пожалуйста, отправь число в диапазоне 120–230")
         return
     await state.update_data(height=height_int)
-    await message.answer("Введите ваш вес в килограммах")
+    await message.answer("А теперь введите ваш вес в килограммах")
     await state.set_state(RegistrationStates.waiting_weight)
 
 
@@ -358,7 +374,19 @@ async def msg_weight(message: Message, state: FSMContext):
         return
     await state.update_data(weight=weight_int)
     await message.answer(
-        "Выберите ваш уровень активности", reply_markup=kb.activity_keyboard
+        "Спасибо! 📝 Теперь выберите ваш пол:", reply_markup=kb.sex_keyboard
+    )
+    await state.set_state(RegistrationStates.waiting_sex)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("sex:"))
+async def sex_callback(query: CallbackQuery, state: FSMContext):
+    await query.answer()
+    _, sex = query.data.split(":")
+    await state.update_data(sex=sex)
+    await query.message.edit_text(
+        "Хорошо! 💪 Теперь выберите ваш уровень активности. Это поможет точнее рассчитать норму калорий",
+        reply_markup=kb.activity_keyboard,
     )
     await state.set_state(RegistrationStates.waiting_activity)
 
@@ -368,7 +396,10 @@ async def cb_activity(query: CallbackQuery, state: FSMContext):
     await query.answer()
     _, activity = query.data.split(":")
     await state.update_data(activity=activity)
-    await query.message.answer("Выберите вашу цель", reply_markup=kb.goal_keyboard)
+    await query.message.edit_text(
+        "Почти готово! 🌟 Укажите вашу цель: поддерживать вес, похудеть или набрать массу",
+        reply_markup=kb.goal_keyboard,
+    )
     await state.set_state(RegistrationStates.waiting_goal)
 
 

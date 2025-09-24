@@ -18,14 +18,14 @@ async def main():
     await bot.set_my_commands(
         [
             BotCommand(command="recipes", description="Выбрать рецепт 😜"),
-            BotCommand(command="add_meal", description="Добавить еду 🍽"),
+            # BotCommand(command="add_meal", description="Добавить еду 🍽"),
             BotCommand(command="delete_meals", description="Удалить приём пищи 🗑"),
             BotCommand(command="show_today_calories", description="Моё КБЖУ ✅"),
-            BotCommand(command="recommend_food", description="Посоветуй что поесть 🍽"),
-            BotCommand(command="plan", description="Планирование питания 📅"),
+            # BotCommand(command="recommend_food", description="Посоветуй что поесть 🍽"),
+            # BotCommand(command="plan", description="Планирование питания 📅"),
             BotCommand(command="track_water", description="Выпить воды 💧"),
             BotCommand(command="my_goal", description="Моя цель 🎉"),
-            BotCommand(command="change_products", description="Замена продуктов 🔄"),
+            # BotCommand(command="change_products", description="Замена продуктов 🔄"),
             BotCommand(command="help", description="Помощь 🛠"),
             BotCommand(command="privacy", description="Политика конфиденциальности"),
         ]

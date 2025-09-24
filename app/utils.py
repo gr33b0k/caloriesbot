@@ -49,13 +49,14 @@ def calculate_calories(data: dict) -> dict:
 def build_registration_message(data):
     lines = []
     lines.append("🎉 <b>Регистрация завершена!</b> 🎉\n")
+    lines.append(f"🕰 Имя: <code>{data['name']}</code>")
     lines.append(f"🕰 Возраст: <code>{data['age']}</code>")
     lines.append(f"📏 Текущий рост: <code>{data['height']}</code>")
     lines.append(f"💪 Текущий вес: <code>{data['weight']}</code>")
     lines.append(
-        f"🏃 Уровень активности: <code>{_match_activity(data['activity'])}</code>"
+        f"🏃 Уровень активности: <code>{match_activity(data['activity'])}</code>"
     )
-    lines.append(f"🎯 Цель: <code>{_match_goal(data['goal'])}</code>")
+    lines.append(f"🎯 Цель: <code>{match_goal(data['goal'])}</code>")
     lines.append(
         f"🔥 Норма калорий для вашей цели: <code>{data['calorie_intake']} ккал</code>"
     )

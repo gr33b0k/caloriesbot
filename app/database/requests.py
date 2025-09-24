@@ -18,6 +18,7 @@ async def set_user(data):
                     height=data.get("height"),
                     weight=data.get("weight"),
                     activity=data.get("activity"),
+                    goal=data.get("goal"),
                     calorie_intake=data.get("calorie_intake"),
                     proteins=data.get("proteins"),
                     fats=data.get("fats"),
@@ -51,11 +52,12 @@ async def update_user_goal(
     carbons: int,
 ) -> None:
     async with async_session() as session:
-        user = await session.scalar(select(UserBase).where(UserBase.telegram_id == telegram_id))
+        user = await session.scalar(
+            select(UserBase).where(UserBase.telegram_id == telegram_id)
+        )
         if not user:
             return
-        user.activity = user.activity
-        user.sex = user.sex
+        user.goal = goal
         user.calorie_intake = calorie_intake
         user.proteins = proteins
         user.fats = fats
@@ -121,10 +123,14 @@ async def seed_recipes_if_empty() -> None:
         await session.commit()
 
 
-async def get_recipes_by_category_and_limit(category: str, max_calories: int) -> list[Recipe]:
+async def get_recipes_by_category_and_limit(
+    category: str, max_calories: int
+) -> list[Recipe]:
     async with async_session() as session:
         result = await session.execute(
-            select(Recipe).where(Recipe.category == category, Recipe.calories <= max_calories)
+            select(Recipe).where(
+                Recipe.category == category, Recipe.calories <= max_calories
+            )
         )
         return list(result.scalars().all())
 
@@ -146,7 +152,9 @@ async def list_selected_recipes(telegram_id: int) -> list[RecipeLog]:
 async def delete_selected_recipe(entry_id: int, telegram_id: int) -> None:
     async with async_session() as session:
         await session.execute(
-            delete(RecipeLog).where(RecipeLog.id == entry_id, RecipeLog.telegram_id == telegram_id)
+            delete(RecipeLog).where(
+                (RecipeLog.id == entry_id) & (RecipeLog.telegram_id == telegram_id)
+            )
         )
         await session.commit()
 
@@ -168,7 +176,12 @@ async def get_today_recipes_sum(telegram_id: int) -> dict:
             .join(Recipe, Recipe.id == RecipeLog.recipe_id)
         )
         cal, p, f, c = result.first()
-        return {"calories": int(cal), "proteins": int(p), "fats": int(f), "carbons": int(c)}
+        return {
+            "calories": int(cal),
+            "proteins": int(p),
+            "fats": int(f),
+            "carbons": int(c),
+        }
 
 
 async def get_today_water_sum(telegram_id: int) -> int:
