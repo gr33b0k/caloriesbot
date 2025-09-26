@@ -74,3 +74,14 @@ async def async_main():
             await conn.execute(
                 text("ALTER TABLE water_logs ADD COLUMN created_at DATETIME")
             )
+        # add goal to users if missing
+        info_users = await conn.execute(text("PRAGMA table_info(users)"))
+        user_cols = [row[1] for row in info_users]
+        if "goal" not in user_cols:
+            await conn.execute(
+                text("ALTER TABLE users ADD COLUMN goal VARCHAR(30)")
+            )
+            # set default goal for existing rows
+            await conn.execute(
+                text("UPDATE users SET goal = 'maintain' WHERE goal IS NULL")
+            )

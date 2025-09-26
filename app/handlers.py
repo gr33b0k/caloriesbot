@@ -11,8 +11,10 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
-
+CHAT_ID = -1002705674859  # твой чат
 router = Router()
 
 
@@ -416,5 +418,20 @@ async def goal_callback(query: CallbackQuery, state: FSMContext):
     await query.message.answer(message_text, parse_mode="HTML")
     await state.clear()
 
+async def is_user_in_chat(bot: Bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(CHAT_ID, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except (TelegramForbiddenError, TelegramBadRequest):
+        return False
 
+
+@router.message(Command("check"))
+async def handle_check(message: Message, bot: Bot):
+    user_id = message.from_user.id
+    in_chat = await is_user_in_chat(bot, user_id)
+    if in_chat:
+        await message.answer("✅ Вы находитесь в нашем чате")
+    else:
+        await message.answer("❌ Вас нет в чате. Пожалуйста, вступите в него")
 # endregion

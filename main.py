@@ -26,6 +26,7 @@ async def main():
             BotCommand(command="track_water", description="Выпить воды 💧"),
             BotCommand(command="my_goal", description="Моя цель 🎉"),
             # BotCommand(command="change_products", description="Замена продуктов 🔄"),
+            BotCommand(command="check_membership", description="Проверить статус участника 🔍"),
             BotCommand(command="help", description="Помощь 🛠"),
             BotCommand(command="privacy", description="Политика конфиденциальности"),
         ]
