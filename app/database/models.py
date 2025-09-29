@@ -18,6 +18,7 @@ class UserBase(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_id = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(20))
     age: Mapped[int] = mapped_column(Integer)
     sex: Mapped[str] = mapped_column(String(7))
     height: Mapped[int] = mapped_column(Integer)

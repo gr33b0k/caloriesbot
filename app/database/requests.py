@@ -13,6 +13,7 @@ async def set_user(data):
             session.add(
                 UserBase(
                     telegram_id=data.get("telegram_id"),
+                    name=data.get("name"),
                     age=data.get("age"),
                     sex=data.get("sex"),
                     height=data.get("height"),

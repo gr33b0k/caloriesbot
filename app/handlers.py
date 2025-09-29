@@ -1,8 +1,10 @@
 import app.keyboards as kb
 import app.database.requests as rq
 from app.utils import (
+    build_menu_message,
+    build_profile_message,
     calculate_calories,
-    build_registration_message,
+    build_confirmation_message,
     match_goal,
 )
 from aiogram import Router
@@ -10,8 +12,6 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 
 router = Router()
 
@@ -40,6 +40,13 @@ class WaterStates(StatesGroup):
 
 
 # region General commands
+
+
+@router.message(Command("menu"))
+async def menu_command(message: Message, state: FSMContext):
+    await message.answer(
+        build_menu_message(False), reply_markup=kb.menu_keyboard, parse_mode="HTML"
+    )
 
 
 @router.message(CommandStart())
@@ -74,7 +81,7 @@ async def start_command(message: Message, state: FSMContext):
 
 
 @router.message(Command("show_today_calories"))
-async def handleShowTodayCalories(message: Message):
+async def show_today_calories_command(message: Message):
     user = await rq.get_user(message.from_user.id)
     if not user:
         await message.answer(
@@ -101,7 +108,7 @@ async def handleShowTodayCalories(message: Message):
 
 
 @router.message(Command("help"))
-async def handleHelp(message: Message):
+async def help_command(message: Message):
     await message.answer(
         "Помощь 🛠\nДоступные команды:\n"
         "/recipes, /delete_meals, /show_today_calories,\n"
@@ -110,7 +117,7 @@ async def handleHelp(message: Message):
 
 
 @router.message(Command("privacy"))
-async def handlePrivacy(message: Message):
+async def privacy_command(message: Message):
     await message.answer(
         "Политика конфиденциальности\nМы храним только данные, которые вы нам отправляете, для расчётов КБЖУ."
     )
@@ -130,7 +137,7 @@ async def handlePrivacy(message: Message):
 
 
 @router.message(Command("recipes"))
-async def handle_recipes(message: Message):
+async def recipes_command(message: Message):
     await rq.seed_recipes_if_empty()
     await message.answer(
         "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
@@ -138,7 +145,7 @@ async def handle_recipes(message: Message):
 
 
 @router.message(Command("delete_meals"))
-async def handle_delete_meals(message: Message):
+async def delete_meals_command(message: Message):
     entries = await rq.list_selected_recipes(message.from_user.id)
     if not entries:
         await message.answer("У вас нет добавленных рецептов")
@@ -210,7 +217,7 @@ async def delete_recipe_entry(query: CallbackQuery):
 
 
 @router.message(Command("track_water"))
-async def handleTrackWater(message: Message):
+async def track_water_command(message: Message):
     user = await rq.get_user(message.from_user.id)
     if user:
         await message.answer(
@@ -257,7 +264,7 @@ async def water_custom_value(message: Message, state: FSMContext):
 
 
 @router.message(Command("my_goal"))
-async def handleMyGoal(message: Message):
+async def my_goal_command(message: Message):
     user = await rq.get_user(message.from_user.id)
     if not user:
         await message.answer("Сначала пройдите регистрацию: /start")
@@ -411,10 +418,40 @@ async def goal_callback(query: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     results = calculate_calories(data)
     combined_data = {**data, **results}
-    message_text = build_registration_message(combined_data)
     await rq.set_user(combined_data)
-    await query.message.answer(message_text, parse_mode="HTML")
+    message_text = build_menu_message(True)
+    await query.message.edit_text(
+        message_text, parse_mode="HTML", reply_markup=kb.menu_keyboard
+    )
     await state.clear()
+
+
+# endregion
+
+
+# region Menu
+
+
+@router.callback_query(lambda c: c.data and c.data == "back_to_menu")
+async def back_to_menu(query: CallbackQuery):
+    await query.answer()
+    message_text = build_menu_message(False)
+    await query.message.edit_text(
+        message_text, parse_mode="HTML", reply_markup=kb.menu_keyboard
+    )
+
+
+@router.callback_query(
+    lambda c: c.data and c.data.startswith("menu:") and c.data.endswith("profile")
+)
+async def menu_profile(query: CallbackQuery):
+    await query.answer()
+    user_id = query.from_user.id
+    user_data = await rq.get_user(user_id)
+    message_text = build_profile_message(user_data)
+    await query.message.edit_text(
+        message_text, parse_mode="HTML", reply_markup=kb.profile_keyboard
+    )
 
 
 # endregion

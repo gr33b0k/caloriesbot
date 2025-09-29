@@ -1,3 +1,6 @@
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+
+
 def calculate_calories(data: dict) -> dict:
     age = int(data["age"])
     sex = data["sex"]
@@ -46,28 +49,60 @@ def calculate_calories(data: dict) -> dict:
     }
 
 
-def build_registration_message(data):
-    lines = []
-    lines.append("🎉 <b>Регистрация завершена!</b> 🎉\n")
-    lines.append(f"🕰 Имя: <code>{data['name']}</code>")
-    lines.append(f"🕰 Возраст: <code>{data['age']}</code>")
-    lines.append(f"📏 Текущий рост: <code>{data['height']}</code>")
-    lines.append(f"💪 Текущий вес: <code>{data['weight']}</code>")
-    lines.append(
-        f"🏃 Уровень активности: <code>{match_activity(data['activity'])}</code>"
+def build_confirmation_message(data):
+    message_text = (
+        f"📋 Подтвердите корректность введенной информации: 📋\n\n"
+        f"🏷️ <b>Имя:</b> <code>{data['name']}</code>\n"
+        f"🎂 <b>Возраст:</b> <code>{data['age']}</code>\n"
+        f"📏 <b>Рост:</b> <code>{data['height']} см</code>\n"
+        f"⚖️ <b>Вес:</b> <code>{data['weight']} кг</code>\n"
+        f"🏃 <b>Уровень активности:</b> <code>{match_activity(data['activity'])}</code>\n"
+        f"🎯 <b>Цель:</b> <code>{match_goal(data['goal'])}</code>\n\n"
+        "✅ Все данные верны?"
     )
-    lines.append(f"🎯 Цель: <code>{match_goal(data['goal'])}</code>")
-    lines.append(
-        f"🔥 Норма калорий для вашей цели: <code>{data['calorie_intake']} ккал</code>"
+    return message_text
+
+
+def build_menu_message(is_registration):
+    message_text = (
+        "🎉 <b>Регистрация завершена!</b> 🎉\n\n"
+        if is_registration
+        else ""
+        "Теперь вы можете использовать все функции бота:\n\n"
+        "📊 <b>Основные команды:</b>\n"
+        "• /recipes - Получить рецепты по категориям\n"
+        "• /delete_meals - Удалить добавленные приемы пищи\n"
+        "• /show_today_calories - Показать остаток КБЖУ на сегодня\n"
+        "• /track_water - Отметить потребление воды\n"
+        "• /my_goal - Посмотреть/изменить цель\n\n"
+        "❓ <b>Помощь:</b>\n"
+        "• /help - Список всех команд\n"
+        "• /privacy - Политика конфиденциальности\n\n"
+        "💡 <b>Совет:</b> Начните с команды /recipes чтобы выбрать блюда на день!"
     )
-    lines.append(f"🍗 Белки: <code>{data['proteins']} г</code>")
-    lines.append(f"🥑 Жиры: <code>{data['fats']} г</code>")
-    lines.append(f"🍚 Углеводы: <code>{data['carbons']} г</code>")
-    lines.append(f"💧 Норма воды: <code>{data['water']} мл</code>\n")
-    lines.append(
-        "Важно: <i>расчёты КБЖУ носят рекомендательный характер и не заменяют консультацию врача/диетолога.</i>"
+    return message_text
+
+
+def build_profile_message(user_data):
+    message_text = (
+        "👤 <b>Мой профиль</b>\n\n"
+        "📝 <b>Личная информация:</b>\n"
+        f"   🏷️ Имя: <code>{user_data.name}</code>\n"
+        f"   🎂 Возраст: <code>{user_data.age} лет</code>\n"
+        f"   📏 Рост: <code>{user_data.height} см</code>\n"
+        f"   ⚖️ Вес: <code>{user_data.weight} кг</code>\n\n"
+        "🎯 <b>Настройки:</b>\n"
+        f"   🏃 Активность: <code>{match_activity(user_data.activity)}</code>\n"
+        f"   🎯 Цель: <code>{match_goal(user_data.goal)}</code>\n\n"
+        "📊 <b>Дневные нормы:</b>\n"
+        f"   🔥 Калории: <code>{user_data.calorie_intake} ккал</code>\n"
+        f"   🍗 Белки: <code>{user_data.proteins} г</code>\n"
+        f"   🥑 Жиры: <code>{user_data.fats} г</code>\n"
+        f"   🍚 Углеводы: <code>{user_data.carbons} г</code>\n"
+        f"   💧 Вода: <code>{user_data.water} мл</code>\n\n"
+        "✏️ <i>Хотите что-то изменить? Выберите поле для редактирования:</i>"
     )
-    return "\n".join(lines)
+    return message_text
 
 
 def match_activity(activity):
@@ -88,3 +123,11 @@ def match_goal(goal):
         "gain": "набор мышечной массы",
     }
     return mapping.get(goal, goal)
+
+
+async def is_user_in_chat(bot, user_id, chat_id):
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except (TelegramForbiddenError, TelegramBadRequest):
+        return False

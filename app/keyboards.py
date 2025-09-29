@@ -1,16 +1,33 @@
-from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
-
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 menu_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Мужской", callback_data="sex:male")],
-        [InlineKeyboardButton(text="Женский", callback_data="sex:female")],
+        [
+            InlineKeyboardButton(text="👤 Профиль", callback_data="menu:profile"),
+            InlineKeyboardButton(text="📊 Моё КБЖУ", callback_data="menu:daily_stats"),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🍽 Питание на день", callback_data="menu:daily_nutrition"
+            ),
+            InlineKeyboardButton(
+                text="💧 Выпить воды", callback_data="menu:track_water"
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
+            InlineKeyboardButton(
+                text="🔒 Конфиденциальность", callback_data="menu:privacy"
+            ),
+        ],
+    ]
+)
+
+profile_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Изменить профиль", callback_data="profile:edit")],
+        [InlineKeyboardButton(text="Назад", callback_data="back_to_menu")],
     ]
 )
 
@@ -54,7 +71,6 @@ activity_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-
 goal_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Похудение", callback_data="goal:loss")],
@@ -63,11 +79,15 @@ goal_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-
-registration_finish_keyboard = InlineKeyboardMarkup(
+edit_profile_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Да", callback_data="register:finish")],
-        [InlineKeyboardButton(text="Нет", callback_data="register:edit")],
+        [InlineKeyboardButton(text="👤 Имя", callback_data="edit:name")],
+        [InlineKeyboardButton(text="🎂 Возраст", callback_data="edit:age")],
+        [InlineKeyboardButton(text="📏 Рост", callback_data="edit:height")],
+        [InlineKeyboardButton(text="⚖️ Вес", callback_data="edit:weight")],
+        [InlineKeyboardButton(text="🏃 Активность", callback_data="edit:activity")],
+        [InlineKeyboardButton(text="🎯 Цель", callback_data="edit:goal")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="menu:profile")],
     ]
 )
 
