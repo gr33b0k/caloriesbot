@@ -1,6 +1,6 @@
 from app.database.models import async_session
 from app.database.models import UserBase, WaterLog, Recipe, RecipeLog
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, update
 
 
 async def set_user(data):
@@ -35,6 +35,17 @@ async def get_user(telegram_id: int) -> UserBase | None:
         return await session.scalar(
             select(UserBase).where(UserBase.telegram_id == telegram_id)
         )
+
+
+async def update_user_info(telegram_id: int, **kwargs):
+    async with async_session() as session:
+        if not kwargs:
+            return
+
+        await session.execute(
+            update(UserBase).where(UserBase.telegram_id == telegram_id).values(**kwargs)
+        )
+        await session.commit()
 
 
 async def add_water_log(telegram_id: int, amount_ml: int) -> None:

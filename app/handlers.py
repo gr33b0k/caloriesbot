@@ -4,9 +4,8 @@ from app.utils import (
     build_menu_message,
     build_profile_message,
     calculate_calories,
-    build_confirmation_message,
-    match_goal,
 )
+from app.constants import *
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
@@ -36,17 +35,14 @@ class WaterStates(StatesGroup):
     waiting_custom_value = State()
 
 
+class EditProfileStates(StatesGroup):
+    waiting_value = State()
+
+
 # endregion
 
 
 # region General commands
-
-
-@router.message(Command("menu"))
-async def menu_command(message: Message, state: FSMContext):
-    await message.answer(
-        build_menu_message(False), reply_markup=kb.menu_keyboard, parse_mode="HTML"
-    )
 
 
 @router.message(CommandStart())
@@ -260,66 +256,6 @@ async def water_custom_value(message: Message, state: FSMContext):
 # endregion
 
 
-# region Goal
-
-
-@router.message(Command("my_goal"))
-async def my_goal_command(message: Message):
-    user = await rq.get_user(message.from_user.id)
-    if not user:
-        await message.answer("Сначала пройдите регистрацию: /start")
-        return
-    await message.answer(
-        f"🎯 Ваша цель: {match_goal(user.goal)}\n",
-        reply_markup=kb.change_goal_button_kb,
-    )
-
-
-@router.callback_query(lambda c: c.data == "change_goal:open")
-async def open_change_goal(query: CallbackQuery):
-    await query.answer()
-    await query.message.edit_text(
-        "Выберите новую цель:", reply_markup=kb.goal_change_keyboard
-    )
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith("change_goal:"))
-async def change_goal_apply(query: CallbackQuery):
-    await query.answer()
-    _, new_goal = query.data.split(":")
-    if new_goal == "open":
-        return
-    user = await rq.get_user(query.from_user.id)
-    if not user:
-        await query.message.answer("Сначала пройдите регистрацию: /start")
-        return
-    data = {
-        "age": user.age,
-        "sex": user.sex,
-        "height": user.height,
-        "weight": user.weight,
-        "activity": user.activity,
-        "goal": new_goal,
-    }
-    results = calculate_calories(data)
-    await rq.update_user_goal(
-        query.from_user.id,
-        goal=new_goal,
-        calorie_intake=results["calorie_intake"],
-        proteins=results["proteins"],
-        fats=results["fats"],
-        carbons=results["carbons"],
-    )
-    await query.message.edit_text(
-        "Цель обновлена ✅\n"
-        f"Новая целевая калорийность: {results['calorie_intake']} ккал\n"
-        f"Белки: {results['proteins']} г, Жиры: {results['fats']} г, Углеводы: {results['carbons']} г"
-    )
-
-
-# endregion
-
-
 # region Registration
 
 
@@ -386,7 +322,9 @@ async def msg_weight(message: Message, state: FSMContext):
     await state.set_state(RegistrationStates.waiting_sex)
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("sex:"))
+@router.callback_query(
+    RegistrationStates.waiting_sex, lambda c: c.data and c.data.startswith("sex:")
+)
 async def sex_callback(query: CallbackQuery, state: FSMContext):
     await query.answer()
     _, sex = query.data.split(":")
@@ -398,7 +336,10 @@ async def sex_callback(query: CallbackQuery, state: FSMContext):
     await state.set_state(RegistrationStates.waiting_activity)
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("activity:"))
+@router.callback_query(
+    RegistrationStates.waiting_activity,
+    lambda c: c.data and c.data.startswith("activity:"),
+)
 async def cb_activity(query: CallbackQuery, state: FSMContext):
     await query.answer()
     _, activity = query.data.split(":")
@@ -410,7 +351,9 @@ async def cb_activity(query: CallbackQuery, state: FSMContext):
     await state.set_state(RegistrationStates.waiting_goal)
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("goal:"))
+@router.callback_query(
+    RegistrationStates.waiting_goal, lambda c: c.data and c.data.startswith("goal:")
+)
 async def goal_callback(query: CallbackQuery, state: FSMContext):
     await query.answer()
     _, goal = query.data.split(":")
@@ -432,6 +375,17 @@ async def goal_callback(query: CallbackQuery, state: FSMContext):
 # region Menu
 
 
+@router.message(Command("menu"))
+async def menu_command(message: Message):
+    user = await rq.get_user(message.from_user.id)
+    if not user:
+        await message.answer("Сначала пройдите регистрацию: /start")
+        return
+    await message.answer(
+        build_menu_message(False), reply_markup=kb.menu_keyboard, parse_mode="HTML"
+    )
+
+
 @router.callback_query(lambda c: c.data and c.data == "back_to_menu")
 async def back_to_menu(query: CallbackQuery):
     await query.answer()
@@ -441,9 +395,7 @@ async def back_to_menu(query: CallbackQuery):
     )
 
 
-@router.callback_query(
-    lambda c: c.data and c.data.startswith("menu:") and c.data.endswith("profile")
-)
+@router.callback_query(lambda c: c.data and c.data == "menu:profile")
 async def menu_profile(query: CallbackQuery):
     await query.answer()
     user_id = query.from_user.id
@@ -452,6 +404,217 @@ async def menu_profile(query: CallbackQuery):
     await query.message.edit_text(
         message_text, parse_mode="HTML", reply_markup=kb.profile_keyboard
     )
+
+
+@router.callback_query(lambda c: c.data and c.data == "menu:daily_stats")
+async def menu_daily_stats(query: CallbackQuery):
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(
+            "Я не нашёл ваших данных. Пройдите регистрацию командой /start."
+        )
+        return
+    meals_sum = await rq.get_today_recipes_sum(query.from_user.id)
+    water_sum = await rq.get_today_water_sum(query.from_user.id)
+    remaining_calories = max(user.calorie_intake - meals_sum["calories"], 0)
+    remaining_proteins = max(user.proteins - meals_sum["proteins"], 0)
+    remaining_fats = max(user.fats - meals_sum["fats"], 0)
+    remaining_carbons = max(user.carbons - meals_sum["carbons"], 0)
+    remaining_water = max(user.water - water_sum, 0)
+    text_lines = []
+    text_lines.append("Моё КБЖУ ✅")
+    text_lines.append(
+        f"🔥 Осталось калорий: {remaining_calories} ккал (из {user.calorie_intake})"
+    )
+    text_lines.append(
+        f"🍗 Осталось белков: {remaining_proteins} г (из {user.proteins})"
+    )
+    text_lines.append(f"🥑 Осталось жиров: {remaining_fats} г (из {user.fats})")
+    text_lines.append(
+        f"🍚 Осталось углеводов: {remaining_carbons} г (из {user.carbons})"
+    )
+    text_lines.append(f"💧 Осталось воды: {remaining_water} мл (норма {user.water})")
+    await query.message.edit_text(
+        "\n".join(text_lines), reply_markup=kb.back_to_menu_keyboard
+    )
+
+
+# endregion
+
+
+# region Profile
+
+
+@router.callback_query(lambda c: c.data == "profile:edit")
+async def edit_profile(query: CallbackQuery):
+    await query.answer()
+    await query.message.edit_text(
+        "Выберите, что Вы хотите поменять:", reply_markup=kb.edit_profile_keyboard
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("edit:"))
+async def edit_field_selection(query: CallbackQuery, state: FSMContext):
+    await query.answer()
+    _, field = query.data.split(":")
+
+    await state.update_data(editing_field=field)
+
+    messages = {
+        "name": "🏷️ Введите Ваше имя:",
+        "sex": "🚻 Выберите Ваш пол:",
+        "age": "🎂 Введите Ваш возраст:",
+        "height": "📏 Введите Ваш рост:",
+        "weight": "⚖️ Введите Ваш вес:",
+        "activity": "🏃 Выберите новый уровень активности:",
+        "goal": "🎯 Выберите новую цель:",
+    }
+
+    if field in ["sex", "activity", "goal"]:
+        keyboards = {
+            "activity": kb.activity_keyboard,
+            "sex": kb.sex_keyboard,
+            "goal": kb.goal_keyboard,
+        }
+        await query.message.edit_text(messages[field], reply_markup=keyboards[field])
+    else:
+        await query.message.edit_text(messages[field])
+
+    await state.set_state(EditProfileStates.waiting_value)
+
+
+@router.message(EditProfileStates.waiting_value)
+async def process_edit_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    field = data["editing_field"]
+
+    if field in ["sex", "activity", "goal"]:
+        return
+
+    value = message.text.strip()
+
+    validation_rules = {
+        "name": {
+            "check": lambda v: v.isalpha() and 2 <= len(v) <= 30,
+            "error": "Пожалуйста, введите корректное имя (только буквы, 2-30 символов)",
+        },
+        "age": {
+            "check": lambda v: v.isdigit() and 16 <= int(v) <= 100,
+            "error": "Пожалуйста, введите число в диапазоне 16-100",
+        },
+        "height": {
+            "check": lambda v: v.isdigit() and 120 <= int(v) <= 230,
+            "error": "Пожалуйста, введите число в диапазоне 120-230",
+        },
+        "weight": {
+            "check": lambda v: v.replace(",", "").replace(".", "").isdigit()
+            and 35 <= float(v.replace(",", ".")) <= 250,
+            "error": "Пожалуйста, введите число в диапазоне 35-250",
+        },
+    }
+
+    if field in validation_rules:
+        rule = validation_rules[field]
+        if not rule["check"](value):
+            await message.answer(rule["error"])
+            return
+
+        if field in ["age", "height"]:
+            value = int(value)
+        elif field == "weight":
+            value = int(float(value.replace(",", ".")))
+
+    user = await rq.get_user(message.from_user.id)
+    if not user:
+        await message.answer("Ошибка: пользователь не найден")
+        await state.clear()
+        return
+
+    if field == "name":
+        await rq.update_user_info(message.from_user.id, **{field: value})
+
+    if field in ["weight", "height", "age"]:
+        user_data = {
+            "age": user.age if field != "age" else value,
+            "sex": user.sex,
+            "height": user.height if field != "height" else value,
+            "weight": user.weight if field != "weight" else value,
+            "activity": user.activity,
+            "goal": user.goal,
+        }
+        results = calculate_calories(user_data)
+        await rq.update_user_info(message.from_user.id, **results)
+
+    updated_user = await rq.get_user(message.from_user.id)
+    success_message = f"✅ {FIELDS_MAPPING.get(field, field).capitalize()} успешно {"обновлен" if field != "name" else "обновлено"}!\n\n"
+    profile_message = build_profile_message(updated_user)
+
+    await message.answer(
+        success_message + profile_message,
+        parse_mode="HTML",
+        reply_markup=kb.profile_keyboard,
+    )
+    await state.clear()
+
+
+async def _process_callback_edit(query: CallbackQuery, state: FSMContext, field):
+    await query.answer()
+    data = await state.get_data()
+
+    if data.get("editing_field") != field:
+        return
+
+    _, value = query.data.split(":")
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.answer("Ошибка: пользователь не найден")
+        await state.clear()
+        return
+
+    user_data = {
+        "age": user.age,
+        "sex": value if field == "sex" else user.sex,
+        "height": user.height,
+        "weight": user.weight,
+        "activity": value if field == "activity" else user.activity,
+        "goal": value if field == "goal" else user.goal,
+    }
+    results = calculate_calories(user_data)
+    new_data = {**{field: value}, **results}
+    await rq.update_user_info(query.from_user.id, **new_data)
+
+    updated_user = await rq.get_user(query.from_user.id)
+    success_message = f"✅ {FIELDS_MAPPING.get(field, field).capitalize()} успешно {'обновлен' if field != 'goal' else 'обновлена'}!\n\n"
+    profile_message = build_profile_message(updated_user)
+
+    await query.message.edit_text(
+        success_message + profile_message,
+        parse_mode="HTML",
+        reply_markup=kb.profile_keyboard,
+    )
+    await state.clear()
+
+
+@router.callback_query(
+    EditProfileStates.waiting_value, lambda c: c.data and c.data.startswith("sex:")
+)
+async def edit_sex_callback(query: CallbackQuery, state: FSMContext):
+    await _process_callback_edit(query, state, "sex")
+
+
+@router.callback_query(
+    EditProfileStates.waiting_value, lambda c: c.data and c.data.startswith("activity:")
+)
+async def edit_activity_callback(query: CallbackQuery, state: FSMContext):
+    await _process_callback_edit(query, state, "activity")
+
+
+@router.callback_query(
+    EditProfileStates.waiting_value, lambda c: c.data and c.data.startswith("goal:")
+)
+async def edit_goal_callback(query: CallbackQuery, state: FSMContext):
+    await _process_callback_edit(query, state, "goal")
 
 
 # endregion

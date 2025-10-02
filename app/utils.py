@@ -1,4 +1,5 @@
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+from app.constants import *
 
 
 def calculate_calories(data: dict) -> dict:
@@ -49,27 +50,14 @@ def calculate_calories(data: dict) -> dict:
     }
 
 
-def build_confirmation_message(data):
-    message_text = (
-        f"📋 Подтвердите корректность введенной информации: 📋\n\n"
-        f"🏷️ <b>Имя:</b> <code>{data['name']}</code>\n"
-        f"🎂 <b>Возраст:</b> <code>{data['age']}</code>\n"
-        f"📏 <b>Рост:</b> <code>{data['height']} см</code>\n"
-        f"⚖️ <b>Вес:</b> <code>{data['weight']} кг</code>\n"
-        f"🏃 <b>Уровень активности:</b> <code>{match_activity(data['activity'])}</code>\n"
-        f"🎯 <b>Цель:</b> <code>{match_goal(data['goal'])}</code>\n\n"
-        "✅ Все данные верны?"
-    )
-    return message_text
-
-
 def build_menu_message(is_registration):
     message_text = (
-        "🎉 <b>Регистрация завершена!</b> 🎉\n\n"
-        if is_registration
-        else ""
-        "Теперь вы можете использовать все функции бота:\n\n"
-        "📊 <b>Основные команды:</b>\n"
+        (
+            "🎉 <b>Регистрация завершена!</b> 🎉\n\nТеперь вы можете использовать все функции бота:\n\n"
+            if is_registration
+            else ""
+        )
+        + "📊 <b>Основные команды:</b>\n"
         "• /recipes - Получить рецепты по категориям\n"
         "• /delete_meals - Удалить добавленные приемы пищи\n"
         "• /show_today_calories - Показать остаток КБЖУ на сегодня\n"
@@ -78,7 +66,6 @@ def build_menu_message(is_registration):
         "❓ <b>Помощь:</b>\n"
         "• /help - Список всех команд\n"
         "• /privacy - Политика конфиденциальности\n\n"
-        "💡 <b>Совет:</b> Начните с команды /recipes чтобы выбрать блюда на день!"
     )
     return message_text
 
@@ -87,42 +74,22 @@ def build_profile_message(user_data):
     message_text = (
         "👤 <b>Мой профиль</b>\n\n"
         "📝 <b>Личная информация:</b>\n"
-        f"   🏷️ Имя: <code>{user_data.name}</code>\n"
-        f"   🎂 Возраст: <code>{user_data.age} лет</code>\n"
-        f"   📏 Рост: <code>{user_data.height} см</code>\n"
-        f"   ⚖️ Вес: <code>{user_data.weight} кг</code>\n\n"
-        "🎯 <b>Настройки:</b>\n"
-        f"   🏃 Активность: <code>{match_activity(user_data.activity)}</code>\n"
-        f"   🎯 Цель: <code>{match_goal(user_data.goal)}</code>\n\n"
+        f"  🏷️ Имя: <code>{user_data.name}</code>\n"
+        f"  🚻 Пол : <code>{SEX_MAPPING.get(user_data.sex, user_data.sex)}</code>\n"
+        f"  🎂 Возраст: <code>{user_data.age} лет</code>\n"
+        f"  📏 Рост: <code>{user_data.height} см</code>\n"
+        f"  ⚖️ Вес: <code>{user_data.weight} кг</code>\n\n"
+        f"  🏃 Активность: <code>{ACTIVITY_MAPPING.get(user_data.activity, user_data.activity)}</code>\n"
+        f"  🎯 Цель: <code>{GOAL_MAPPING.get(user_data.goal, user_data.goal)}</code>\n"
         "📊 <b>Дневные нормы:</b>\n"
-        f"   🔥 Калории: <code>{user_data.calorie_intake} ккал</code>\n"
-        f"   🍗 Белки: <code>{user_data.proteins} г</code>\n"
-        f"   🥑 Жиры: <code>{user_data.fats} г</code>\n"
-        f"   🍚 Углеводы: <code>{user_data.carbons} г</code>\n"
-        f"   💧 Вода: <code>{user_data.water} мл</code>\n\n"
-        "✏️ <i>Хотите что-то изменить? Выберите поле для редактирования:</i>"
+        f"  🔥 Калории: <code>{user_data.calorie_intake} ккал</code>\n"
+        f"  🍗 Белки: <code>{user_data.proteins} г</code>\n"
+        f"  🥑 Жиры: <code>{user_data.fats} г</code>\n"
+        f"  🍚 Углеводы: <code>{user_data.carbons} г</code>\n"
+        f"  💧 Вода: <code>{user_data.water} мл</code>\n\n"
+        "✏️ <i>Хотите что-то изменить?</i>"
     )
     return message_text
-
-
-def match_activity(activity):
-    mapping = {
-        "inactive": "сидячий образ жизни",
-        "light": "легкая активность",
-        "moderate": "умеренная активность",
-        "high": "активный образ жизни",
-        "very-high": "очень активный образ жизни",
-    }
-    return mapping.get(activity, activity)
-
-
-def match_goal(goal):
-    mapping = {
-        "loss": "похудение",
-        "maintain": "поддержание веса",
-        "gain": "набор мышечной массы",
-    }
-    return mapping.get(goal, goal)
 
 
 async def is_user_in_chat(bot, user_id, chat_id):
