@@ -1,16 +1,23 @@
+from typing import Union
 import app.keyboards as kb
 import app.database.requests as rq
 from app.utils import (
+    build_daily_nutrition_message,
+    build_daily_stats_message,
+    build_help_message,
     build_menu_message,
+    build_not_registered_message,
     build_profile_message,
+    build_recipe_message,
     calculate_calories,
 )
 from app.constants import *
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.exceptions import TelegramBadRequest
 
 router = Router()
 
@@ -42,221 +49,45 @@ class EditProfileStates(StatesGroup):
 # endregion
 
 
-# region General commands
+# region Registration
 
 
 @router.message(CommandStart())
-async def start_command(message: Message, state: FSMContext):
-    await state.clear()
-    await message.reply(
-        "Давайте познакомимся! 🙂 Пожалуйста, напишите своё имя.",
-    )
-    await state.update_data(telegram_id=message.from_user.id)
-    await state.set_state(RegistrationStates.waiting_name)
-
-
-# @router.message(Command("recommend_food"))
-# async def handleRecommendFood(message: Message):
-#     await message.answer(
-#         "Посоветуй что поесть 🍽\nНапишите время приёма пищи (завтрак/обед/ужин) — я подскажу идеи."
-#     )
-
-
-# @router.message(Command("plan"))
-# async def handlePlan(message: Message):
-#     await message.answer(
-#         'Планирование питания 📅\nОпишите период (например: "на неделю") и предпочтения.'
-#     )
-
-
-# @router.message(Command("add_meal"))
-# async def handleAddMeal(message: Message):
-#     await message.answer(
-#         'Добавить еду 🍽\nНапишите, что вы съели и сколько (например: "овсянка 60 г").'
-#     )
-
-
-@router.message(Command("show_today_calories"))
-async def show_today_calories_command(message: Message):
-    user = await rq.get_user(message.from_user.id)
-    if not user:
-        await message.answer(
-            "Я не нашёл ваших данных. Пройдите регистрацию командой /start."
-        )
-        return
-    meals_sum = await rq.get_today_recipes_sum(message.from_user.id)
-    water_sum = await rq.get_today_water_sum(message.from_user.id)
-    remaining_cal = max(user.calorie_intake - meals_sum["calories"], 0)
-    remaining_p = max(user.proteins - meals_sum["proteins"], 0)
-    remaining_f = max(user.fats - meals_sum["fats"], 0)
-    remaining_c = max(user.carbons - meals_sum["carbons"], 0)
-    remaining_water = max(user.water - water_sum, 0)
-    text_lines = []
-    text_lines.append("Моё КБЖУ ✅")
-    text_lines.append(
-        f"🔥 Осталось калорий: {remaining_cal} ккал (из {user.calorie_intake})"
-    )
-    text_lines.append(f"🍗 Осталось белков: {remaining_p} г (из {user.proteins})")
-    text_lines.append(f"🥑 Осталось жиров: {remaining_f} г (из {user.fats})")
-    text_lines.append(f"🍚 Осталось углеводов: {remaining_c} г (из {user.carbons})")
-    text_lines.append(f"💧 Осталось воды: {remaining_water} мл (норма {user.water})")
-    await message.answer("\n".join(text_lines))
-
-
-@router.message(Command("help"))
-async def help_command(message: Message):
-    await message.answer(
-        "Помощь 🛠\nДоступные команды:\n"
-        "/recipes, /delete_meals, /show_today_calories,\n"
-        "/track_water, /my_goal, /help, /privacy"
-    )
-
-
-@router.message(Command("privacy"))
-async def privacy_command(message: Message):
-    await message.answer(
-        "Политика конфиденциальности\nМы храним только данные, которые вы нам отправляете, для расчётов КБЖУ."
-    )
-
-
-# @router.message(Command("change_products"))
-# async def handleChangeProducts(message: Message):
-#     await message.answer(
-#         'Замена продуктов 🔄\nНапишите продукт и альтернативу (например: "майонез → греческий йогурт").'
-#     )
-
-
-# endregion
-
-
-# region Recipes
-
-
-@router.message(Command("recipes"))
-async def recipes_command(message: Message):
-    await rq.seed_recipes_if_empty()
-    await message.answer(
-        "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
-    )
-
-
-@router.message(Command("delete_meals"))
-async def delete_meals_command(message: Message):
-    entries = await rq.list_selected_recipes(message.from_user.id)
-    if not entries:
-        await message.answer("У вас нет добавленных рецептов")
-        return
-    await message.answer(
-        "Удалить приём пищи 🗑\nВыберите запись для удаления:",
-        reply_markup=kb.build_delete_recipe_keyboard(entries),
-    )
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith("recipes:"))
-async def recipes_by_category(query: CallbackQuery):
-    await query.answer()
-    _, category = query.data.split(":")
-    user = await rq.get_user(query.from_user.id)
-    if not user:
-        await query.message.answer("Сначала пройдите регистрацию: /start")
-        return
-    max_cal = user.calorie_intake
-    recipes = await rq.get_recipes_by_category_and_limit(category, max_cal)
-    if not recipes:
-        await query.message.answer("Подходящих рецептов не найдено")
-        return
-    await query.message.edit_text(
-        "😋 Выберите рецепт:", reply_markup=kb.build_recipes_keyboard(recipes)
-    )
-
-
-@router.callback_query(
-    lambda c: c.data
-    and c.data.startswith("pick_recipe:")
-    and not c.data.endswith("back")
-)
-async def pick_recipe(query: CallbackQuery):
-    await query.answer()
-    _, recipe_id = query.data.split(":")
-    await rq.add_recipe_selection(query.from_user.id, int(recipe_id))
-    await query.message.edit_text(
-        "Вы успешно добавили рецепт!\n\nВыберите приём пищи:",
-        reply_markup=kb.recipes_categories_keyboard,
-    )
-
-
-@router.callback_query(
-    lambda c: c.data and c.data.startswith("pick_recipe:") and c.data.endswith("back")
-)
-async def back_to_categories(query: CallbackQuery):
-    await query.message.edit_text(
-        "Выберите приём пищи:", reply_markup=kb.recipes_categories_keyboard
-    )
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith("del_recipe:"))
-async def delete_recipe_entry(query: CallbackQuery):
-    await query.answer()
-    _, entry_id = query.data.split(":")
-    await rq.delete_selected_recipe(int(entry_id), query.from_user.id)
-    entries = await rq.list_selected_recipes(query.from_user.id)
-    await query.message.edit_text(
-        "Удалить приём пищи 🗑\nВыберите запись для удаления:",
-        reply_markup=kb.build_delete_recipe_keyboard(entries),
-    )
-
-
-# endregion
-
-
-# region Water
-
-
-@router.message(Command("track_water"))
-async def track_water_command(message: Message):
-    user = await rq.get_user(message.from_user.id)
-    if user:
-        await message.answer(
-            f"Выпить воды 💧\nВаша дневная норма: {user.water} мл.",
-            reply_markup=kb.track_water_keyboard,
-        )
+@router.callback_query(lambda c: c.data and c.data == "start:reregister")
+async def start_command(update: Union[Message, CallbackQuery], state: FSMContext):
+    if isinstance(update, Message):
+        user_id = update.from_user.id
+        reply_method = update.answer
     else:
-        await message.answer(
-            "Выпить воды 💧\nЧтобы рассчитать норму, сначала пройдите регистрацию командой /start."
+        user_id = update.from_user.id
+        reply_method = update.message.edit_text
+        await update.answer()
+
+    user = await rq.get_user(user_id)
+
+    if isinstance(update, CallbackQuery):
+        await reply_method(
+            "🔄 <b>Начинаем регистрацию заново</b>\n\n"
+            "Пожалуйста, напишите своё имя:",
+            parse_mode="HTML",
         )
-
-
-@router.callback_query(lambda c: c.data and c.data.startswith("water:"))
-async def water_choice(query: CallbackQuery, state: FSMContext):
-    await query.answer()
-    _, value = query.data.split(":")
-    if value == "custom":
-        await query.message.answer("Введите объём воды в мл (целое число):")
-        await state.set_state(WaterStates.waiting_custom_value)
+        await state.update_data(telegram_id=user_id, user_exists=True)
+        await state.set_state(RegistrationStates.waiting_name)
         return
-    amount_ml = int(value)
-    await rq.add_water_log(query.from_user.id, amount_ml)
-    await query.message.answer("Вы успешно отметили приём воды")
 
-
-@router.message(WaterStates.waiting_custom_value)
-async def water_custom_value(message: Message, state: FSMContext):
-    text = message.text.strip().replace(" ", "")
-    if not text.isdigit():
-        await message.answer(
-            "Пожалуйста, введите целое число в миллилитрах, например 300"
+    if user and isinstance(update, Message):
+        await reply_method(
+            "✨ Вы уже проходили регистрацию ранее\n\nЧто хотите сделать?",
+            parse_mode="HTML",
+            reply_markup=kb.start_choice_keyboard,
         )
+        await state.clear()
         return
-    amount_ml = int(text)
-    await rq.add_water_log(message.from_user.id, amount_ml)
-    await message.answer("Вы успешно отметили приём воды")
+
     await state.clear()
-
-
-# endregion
-
-
-# region Registration
+    await reply_method("Давайте познакомимся! 🙂 Пожалуйста, напишите своё имя.")
+    await state.update_data(telegram_id=user_id, user_exists=False)
+    await state.set_state(RegistrationStates.waiting_name)
 
 
 @router.message(RegistrationStates.waiting_name)
@@ -376,19 +207,43 @@ async def goal_callback(query: CallbackQuery, state: FSMContext):
 
 
 @router.message(Command("menu"))
-async def menu_command(message: Message):
-    user = await rq.get_user(message.from_user.id)
+@router.callback_query(lambda c: c.data and c.data == "start:menu")
+async def menu_command(update: Union[Message, CallbackQuery]):
+    if isinstance(update, Message):
+        message = update
+        user_id = update.from_user.id
+    else:
+        message = update.message
+        user_id = update.from_user.id
+        await update.answer()
+
+    user = await rq.get_user(user_id)
     if not user:
-        await message.answer("Сначала пройдите регистрацию: /start")
+        if isinstance(update, Message):
+            await message.answer(build_not_registered_message(), parse_mode="HTML")
+        else:
+            await message.edit_text(build_not_registered_message(), parse_mode="HTML")
         return
-    await message.answer(
-        build_menu_message(False), reply_markup=kb.menu_keyboard, parse_mode="HTML"
-    )
+
+    message_text = build_menu_message(False)
+
+    if isinstance(update, Message):
+        await message.answer(
+            message_text, reply_markup=kb.menu_keyboard, parse_mode="HTML"
+        )
+    else:
+        await message.edit_text(
+            message_text, reply_markup=kb.menu_keyboard, parse_mode="HTML"
+        )
 
 
 @router.callback_query(lambda c: c.data and c.data == "back_to_menu")
 async def back_to_menu(query: CallbackQuery):
     await query.answer()
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
     message_text = build_menu_message(False)
     await query.message.edit_text(
         message_text, parse_mode="HTML", reply_markup=kb.menu_keyboard
@@ -400,6 +255,9 @@ async def menu_profile(query: CallbackQuery):
     await query.answer()
     user_id = query.from_user.id
     user_data = await rq.get_user(user_id)
+    if not user_data:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
     message_text = build_profile_message(user_data)
     await query.message.edit_text(
         message_text, parse_mode="HTML", reply_markup=kb.profile_keyboard
@@ -410,33 +268,106 @@ async def menu_profile(query: CallbackQuery):
 async def menu_daily_stats(query: CallbackQuery):
     user = await rq.get_user(query.from_user.id)
     if not user:
-        await query.message.edit_text(
-            "Я не нашёл ваших данных. Пройдите регистрацию командой /start."
-        )
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
         return
+
     meals_sum = await rq.get_today_recipes_sum(query.from_user.id)
     water_sum = await rq.get_today_water_sum(query.from_user.id)
-    remaining_calories = max(user.calorie_intake - meals_sum["calories"], 0)
-    remaining_proteins = max(user.proteins - meals_sum["proteins"], 0)
-    remaining_fats = max(user.fats - meals_sum["fats"], 0)
-    remaining_carbons = max(user.carbons - meals_sum["carbons"], 0)
-    remaining_water = max(user.water - water_sum, 0)
-    text_lines = []
-    text_lines.append("Моё КБЖУ ✅")
-    text_lines.append(
-        f"🔥 Осталось калорий: {remaining_calories} ккал (из {user.calorie_intake})"
-    )
-    text_lines.append(
-        f"🍗 Осталось белков: {remaining_proteins} г (из {user.proteins})"
-    )
-    text_lines.append(f"🥑 Осталось жиров: {remaining_fats} г (из {user.fats})")
-    text_lines.append(
-        f"🍚 Осталось углеводов: {remaining_carbons} г (из {user.carbons})"
-    )
-    text_lines.append(f"💧 Осталось воды: {remaining_water} мл (норма {user.water})")
+
+    message_text = build_daily_stats_message(user, meals_sum, water_sum)
+
     await query.message.edit_text(
-        "\n".join(text_lines), reply_markup=kb.back_to_menu_keyboard
+        message_text, reply_markup=kb.daily_stats_keyboard, parse_mode="HTML"
     )
+
+
+@router.callback_query(lambda c: c.data and c.data == "menu:daily_nutrition")
+async def menu_daily_nutrition(query: CallbackQuery):
+    await query.answer()
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+    meals_list = await rq.list_selected_recipes(query.from_user.id)
+    message_text = build_daily_nutrition_message(meals_list)
+    await query.message.edit_text(
+        message_text,
+        parse_mode="HTML",
+        reply_markup=kb.build_meals_keyboard(set(meals_list)),
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data == "menu:track_water")
+async def menu_track_water(query: CallbackQuery):
+    user = await rq.get_user(query.from_user.id)
+    if user:
+        await query.message.edit_text(
+            "💧 <b>Отслеживание воды</b>\n\n"
+            f"📊 <b>Ваша дневная норма:</b> <code>{user.water} мл</code>\n\n"
+            "➕ <i>Выберите объём воды или введите свой</i>",
+            reply_markup=kb.track_water_keyboard,
+            parse_mode="HTML",
+        )
+    else:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+
+
+@router.message(Command("privacy"))
+@router.callback_query(lambda c: c.data and c.data == "menu:privacy")
+async def menu_privacy(update: Union[Message, CallbackQuery]):
+    if isinstance(update, Message):
+        message = update
+        user_id = update.from_user.id
+    else:
+        message = update.message
+        user_id = update.from_user.id
+        await update.answer()
+
+    user_exists = await rq.user_exists(user_id)
+    message_text = (
+        "<b>🔐 Политика конфиденциальности</b>\n\n"
+        "✨ <b>Мы заботимся о вашей конфиденциальности</b> ✨\n\n"
+        "📋 <u>Какие данные мы храним:</u>\n"
+        "📊 Информацию, которую вы добровольно предоставляете\n"
+        "🧮 Результаты расчетов КБЖУ\n\n"
+        "🎯 <u>Для чего используем:</u>\n"
+        "✅ Исключительно для расчетов калорийности и БЖУ\n\n"
+        "🛡️ <u>Гарантии безопасности:</u>\n"
+        "🔒 Ваши данные защищены\n"
+        "🙅‍♂️ Не передаются третьим лицам\n"
+        "📝 Вы всегда можете запросить удаление данных\n\n"
+        "🌟 <i>Спасибо, что доверяете нам!</i> 🌟"
+    )
+    if isinstance(update, Message):
+        await message.answer(message_text, parse_mode="HTML")
+    else:
+        await message.edit_text(
+            message_text,
+            reply_markup=kb.back_to_menu_keyboard if user_exists else None,
+            parse_mode="HTML",
+        )
+
+
+@router.message(Command("help"))
+@router.callback_query(lambda c: c.data and c.data == "menu:help")
+async def menu_help(update: Union[Message, CallbackQuery]):
+    if isinstance(update, Message):
+        message = update
+        user_id = update.from_user.id
+    else:
+        message = update.message
+        user_id = update.from_user.id
+        await update.answer()
+
+    user_exists = await rq.user_exists(user_id)
+    if isinstance(update, Message):
+        await message.answer(build_help_message(user_exists), parse_mode="HTML")
+    else:
+        await message.edit_text(
+            build_help_message(user_exists),
+            reply_markup=kb.back_to_menu_keyboard if user_exists else None,
+            parse_mode="HTML",
+        )
 
 
 # endregion
@@ -448,6 +379,10 @@ async def menu_daily_stats(query: CallbackQuery):
 @router.callback_query(lambda c: c.data == "profile:edit")
 async def edit_profile(query: CallbackQuery):
     await query.answer()
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
     await query.message.edit_text(
         "Выберите, что Вы хотите поменять:", reply_markup=kb.edit_profile_keyboard
     )
@@ -456,6 +391,11 @@ async def edit_profile(query: CallbackQuery):
 @router.callback_query(lambda c: c.data and c.data.startswith("edit:"))
 async def edit_field_selection(query: CallbackQuery, state: FSMContext):
     await query.answer()
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
     _, field = query.data.split(":")
 
     await state.update_data(editing_field=field)
@@ -615,6 +555,189 @@ async def edit_activity_callback(query: CallbackQuery, state: FSMContext):
 )
 async def edit_goal_callback(query: CallbackQuery, state: FSMContext):
     await _process_callback_edit(query, state, "goal")
+
+
+# endregion
+
+
+# region Recipes
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("recipes:"))
+async def recipes_by_category(query: CallbackQuery):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, category, menu_item = query.data.split(":")
+    if category == "plan":
+        await query.message.edit_text(
+            "Выберите приём пищи:",
+            reply_markup=kb.build_recipes_categories_keyboard(menu_item),
+        )
+        return
+    max_cal = user.calorie_intake
+    recipes = await rq.get_recipes_by_category_and_limit(category, max_cal)
+    if not recipes:
+        await query.message.edit_text(
+            "Подходящих рецептов не найдено", reply_markup=kb.back_to_menu_keyboard
+        )
+        return
+
+    message_text = build_recipe_message(recipes[0])
+    await query.message.edit_text(
+        message_text,
+        reply_markup=kb.build_recipes_keyboard(category, 0, len(recipes), menu_item),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("recipe_nav:"))
+async def navigate_recipes(query: CallbackQuery):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, category, index, menu_item = query.data.split(":")
+    index = int(index)
+
+    recipes = await rq.get_recipes_by_category_and_limit(category, user.calorie_intake)
+    total = len(recipes)
+
+    if index < 0 or index >= total:
+        return
+
+    message_text = build_recipe_message(recipes[index])
+
+    await query.message.edit_text(
+        message_text,
+        reply_markup=kb.build_recipes_keyboard(category, index, total, menu_item),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("pick_recipe:"))
+async def pick_recipe(query: CallbackQuery):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, recipe_id, menu_item = query.data.split(":")
+    await rq.add_recipe_selection(query.from_user.id, int(recipe_id))
+    await query.message.edit_text(
+        "Вы успешно добавили рецепт!\n\nВыберите приём пищи:",
+        reply_markup=kb.build_recipes_categories_keyboard(menu_item),
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("show_recipe:"))
+async def show_recipe(query: CallbackQuery):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, recipe_id = query.data.split(":")
+    recipe = await rq.get_recipe(int(recipe_id))
+    message_text = build_recipe_message(recipe)
+    await query.message.edit_text(
+        message_text,
+        parse_mode="HTML",
+        reply_markup=kb.build_delete_recipe_keyboard(recipe_id),
+    )
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("del_recipe:"))
+async def delete_recipe_entry(query: CallbackQuery):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, entry_id = query.data.split(":")
+    await rq.delete_selected_recipe(int(entry_id), query.from_user.id)
+    meals_list = await rq.list_selected_recipes(query.from_user.id)
+    message_text = build_daily_nutrition_message(meals_list)
+    await query.message.edit_text(
+        message_text,
+        reply_markup=kb.build_meals_keyboard(meals_list),
+        parse_mode="HTML",
+    )
+
+
+# endregion
+
+
+# region Water
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("water:"))
+async def water_choice(query: CallbackQuery, state: FSMContext):
+    await query.answer()
+
+    user = await rq.get_user(query.from_user.id)
+    if not user:
+        await query.message.edit_text(build_not_registered_message(), parse_mode="HTML")
+        return
+
+    _, value = query.data.split(":")
+    if value == "custom":
+        await query.message.edit_text(
+            "📝 <i>Введите объём воды в мл (целое число):</i>\n"
+            "Например: <code>250</code>",
+            parse_mode="HTML",
+            reply_markup=kb.back_to_menu_keyboard,
+        )
+        await state.set_state(WaterStates.waiting_custom_value)
+        return
+    amount_ml = int(value)
+    await rq.add_water_log(query.from_user.id, amount_ml)
+    try:
+        await query.message.edit_text(
+            "✅ <b>Приём воды зарегистрирован</b>\n\n"
+            f"💧 Выпито: <code>{amount_ml} мл</code>\n\n"
+            "<i>➕ Выберите объём воды или введите свой</i>",
+            parse_mode="HTML",
+            reply_markup=kb.track_water_keyboard,
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise e
+
+
+@router.message(WaterStates.waiting_custom_value)
+async def water_custom_value(message: Message, state: FSMContext):
+    text = message.text.strip().replace(" ", "")
+    if not text.isdigit():
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "📝 <i>Пожалуйста, введите целое число в миллилитрах:</i>\n"
+            "Например: <code>300</code>"
+        )
+        return
+    amount_ml = int(text)
+    await rq.add_water_log(message.from_user.id, amount_ml)
+    await message.answer(
+        "✅ <b>Приём воды зарегистрирован</b>\n\n"
+        f"💧 Выпито: <code>{amount_ml} мл</code>\n\n"
+        "<i>➕ Выберите объём воды или введите свой</i>",
+        parse_mode="HTML",
+        reply_markup=kb.track_water_keyboard,
+    )
+    await state.clear()
 
 
 # endregion

@@ -16,7 +16,7 @@ menu_keyboard = InlineKeyboardMarkup(
             ),
         ],
         [
-            InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
+            InlineKeyboardButton(text="❓ Помощь", callback_data="menu:help"),
             InlineKeyboardButton(
                 text="🔒 Конфиденциальность", callback_data="menu:privacy"
             ),
@@ -37,6 +37,18 @@ profile_keyboard = InlineKeyboardMarkup(
     ]
 )
 
+daily_stats_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🗓 Запланировать прием пищи",
+                callback_data="recipes:plan:daily_stats",
+            )
+        ],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")],
+    ]
+)
+
 edit_profile_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -53,6 +65,8 @@ edit_profile_keyboard = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(text="🎯 Цель", callback_data="edit:goal"),
+        ],
+        [
             InlineKeyboardButton(text="🔙 Назад", callback_data="menu:profile"),
         ],
     ]
@@ -108,45 +122,131 @@ goal_keyboard = InlineKeyboardMarkup(
 
 track_water_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="250 мл", callback_data="water:250")],
-        [InlineKeyboardButton(text="500 мл", callback_data="water:500")],
-        [InlineKeyboardButton(text="1 л", callback_data="water:1000")],
+        [InlineKeyboardButton(text="💦 250 мл", callback_data="water:250")],
+        [InlineKeyboardButton(text="🚰 500 мл", callback_data="water:500")],
+        [InlineKeyboardButton(text="⛲️ 1 л", callback_data="water:1000")],
         [
             InlineKeyboardButton(
-                text="Ввести своё значение", callback_data="water:custom"
+                text="✍️ Ввести своё значение", callback_data="water:custom"
             )
         ],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")],
     ]
 )
 
-
-recipes_categories_keyboard = InlineKeyboardMarkup(
+start_choice_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
-            InlineKeyboardButton(text="Завтрак", callback_data="recipes:breakfast"),
-            InlineKeyboardButton(text="Обед", callback_data="recipes:lunch"),
+            InlineKeyboardButton(
+                text="🔄 Пройти регистрацию заново", callback_data="start:reregister"
+            )
         ],
-        [
-            InlineKeyboardButton(text="Ужин", callback_data="recipes:dinner"),
-        ],
+        [InlineKeyboardButton(text="🚀 Перейти в меню", callback_data="start:menu")],
     ]
 )
 
 
-def build_recipes_keyboard(recipes):
-    recipes_builder = InlineKeyboardBuilder()
-    for r in recipes:
-        recipes_builder.button(
-            text=f"{r.title} ({r.calories} ккал)", callback_data=f"pick_recipe:{r.id}"
+def back_to_menu_item_button(menu_item):
+    return (
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=f"menu:{menu_item}",
+        ),
+    )
+
+
+def build_recipes_categories_keyboard(menu_item):
+    categories_builder = InlineKeyboardBuilder()
+    categories_builder.add(
+        InlineKeyboardButton(
+            text="🥞 Завтрак", callback_data=f"recipes:breakfast:{menu_item}"
+        ),
+        InlineKeyboardButton(
+            text="🍱 Обед", callback_data=f"recipes:lunch:{menu_item}"
+        ),
+        InlineKeyboardButton(
+            text="🧆 Ужин", callback_data=f"recipes:dinner:{menu_item}"
+        ),
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=f"menu:{menu_item}",
+        ),
+    )
+    categories_builder.adjust(1)
+
+    return categories_builder.as_markup()
+
+
+def build_delete_recipe_keyboard(recipe_id):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 Удалить", callback_data=f"del_recipe:{recipe_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data=f"menu:daily_nutrition"
+                ),
+            ],
+        ]
+    )
+
+    return keyboard
+
+
+def build_recipes_keyboard(category: str, index: int, total: int, menu_item):
+    buttons = []
+    if index > 0:
+        buttons.append(
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=f"recipe_nav:{category}:{index-1}:{menu_item}",
+            )
         )
-    recipes_builder.button(text="🔙 Назад", callback_data="pick_recipe:back")
+    if index < total - 1:
+        buttons.append(
+            InlineKeyboardButton(
+                text="Вперед ➡️",
+                callback_data=f"recipe_nav:{category}:{index+1}:{menu_item}",
+            )
+        )
+    return (
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                buttons,
+                [
+                    InlineKeyboardButton(
+                        text="Добавить в корзину",
+                        callback_data=f"pick_recipe:{index}:{menu_item}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data=f"recipes:plan:{menu_item}"
+                    )
+                ],
+            ]
+        )
+        if buttons
+        else None
+    )
+
+
+def build_meals_keyboard(meals):
+    recipes_builder = InlineKeyboardBuilder()
+    if meals:
+        for meal in meals:
+            recipes_builder.button(
+                text=f"{meal.title} ({meal.calories} ккал)",
+                callback_data=f"show_recipe:{meal.id}",
+            )
+    else:
+        recipes_builder.button(
+            text="🗓 Запланировать прием пищи",
+            callback_data="recipes:plan:daily_nutrition",
+        )
+    recipes_builder.button(text="🔙 Назад", callback_data="back_to_menu")
     recipes_builder.adjust(1)
     return recipes_builder.as_markup()
-
-
-def build_delete_recipe_keyboard(entries):
-    builder = InlineKeyboardBuilder()
-    for e in entries:
-        builder.button(text=f"#{e.id}", callback_data=f"del_recipe:{e.id}")
-    builder.adjust(3)
-    return builder.as_markup()

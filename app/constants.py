@@ -28,3 +28,5 @@ ACTIVITY_MAPPING = {
     "high": "активный образ жизни",
     "very-high": "очень активный образ жизни",
 }
+
+CATEGORIES_MAPPING = {"breakfast": "завтрак", "lunch": "обед", "dinner": "ужин"}
